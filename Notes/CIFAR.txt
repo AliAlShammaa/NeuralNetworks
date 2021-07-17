@@ -1,0 +1,32 @@
+-- Figure out why CIFAR is still not working with ANN and ways to improve this (the auto tuner should improve it, provide some explanations). Perhaps provide some explanations for what worked and what did not, obstacles and any choices you made. 
+
+ WOuld be nice to achieve 70 % with fully connected without much time investment
+But of course you need testing as well.
+Remember this is only 1024 Cifar not 3072
+Use the softmax because it is logic is better for categorisation - probability stuff	
+
+
+-- perhap try Aditya's advice
+-- Build a CNN from scratch to show understanding of the NN
+-- Make the CNN in keras and achieve high results , explain why this worked better. How you solved any obstacles.
+-- implement the network at one point such that all regional data is lost, somethingl like a pure conv net. Read about this and other similar strucutres
+-- why do CNNs avoid ovefitting
+
+-- make a site that has this network
+
+-- may be figure out the stuff with binary cross entropy and why it worked.
+-- Why CNN are good for overfitting
+
+ Things to Avoid : 
+   -- casually experimenting with hyper parameters
+   -- TF and colab can be adictive.
+   -- do not  confuse training accuracy for testing accuracy
+
+
+
+There are few features to experiment with this CNN
+
+Save whatever parameters you get for MNIST or CIFAR using CNN or ANN
+
+
+
