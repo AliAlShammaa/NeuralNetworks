@@ -109,7 +109,7 @@ class loglikedlihood:
     def fn(a, y):
         theKey = np.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]).reshape(10, 1)
         a = -1 * np.log(a)
-        return a * np.matmult(np.transpose(y), theKey)
+        return a * np.matmul(np.transpose(y), theKey)
 
     @staticmethod
     def delta(z, a, y):
@@ -405,8 +405,13 @@ class ConvPoolLayer:
 
             ## The deeper layer is Convolutional Layer
             else:
-                pass
-
+                ## BP 2
+                ##
+                deeperWeights = (deeperWeights.transpose()).reshape(
+                    (c[0], c[1], c[2], deeperWeights.shape[0]), order="F"
+                )
+                
+                
         ## BP3 ; updating the Biases
         self.biases = self.biases - ((eta) / batchSize) * np.sum(
             np.sum(self.errors, axis=-1), axis=(0, 1)
@@ -473,7 +478,7 @@ class FullyConnected:
         if self.costFunction == None:
 
             Deltas = (
-                np.matmult(np.transpose(deeperWeights), deeperDeltas)
+                np.matmul(np.transpose(deeperWeights), deeperDeltas)
             ) * self.activationFunc.prime(self.weightedInputs)
 
         else:
