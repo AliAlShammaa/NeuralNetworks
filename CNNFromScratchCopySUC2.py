@@ -151,7 +151,7 @@ class ConvPoolLayer:
         activationFunctions,
         stride=(1,1),
         PoolingBool=0,
-        PoolingSize=(1, 1, 1), 
+        PoolingSize=(1, 1), 
         PoolingOverlap=0
     ):
         """PrevlayerSize is the size of the previous layer (3D Tensor),
@@ -200,27 +200,18 @@ class ConvPoolLayer:
         self.biases =  np.random.normal( loc=1.0, scale=0.2 , size=(len(activationFunctions),1) )   *  0.0005
 
     def poolingMap(self, batchActivations):
-        ### The same pooling Size for all pools
-        poolingMaps = self.PoolingMapsFuncs
-        listOfMapsByPool = (
-            []
-        )  ## In this case a map is a 4D tensor of a kernel map for the given batch
-        # sizeOfPrev = batchActivations.shape[0:-1]
-        listOfdelAdelAByPool = []
-        
+        ### The same pooling Size for all pools        
         poolX = self.PoolingSize[0]
         poolY = self.PoolingSize[1]
-        c = self.PoolingSize[1]
-
-        ## iterating over each kernel
-
-        
-        strided = np.lib.stride_tricks.sliding_window_view(batchActivations , (poolX, poolY), axis=(0,1))  ##5,5,3,10,2,2
+ 
+  
+        ##+ (1,batchActivations.shape[-1],)
+        strided = np.lib.stride_tricks.sliding_window_view(batchActivations , (poolX, poolY) , axis=(0,1))  ##5,5,3,10,2,2
         stridedMaxed = np.max(strided,axis=(-1,-2)) ##5,5,3,10
         
         if self.PoolingOverlap == 0:
-           stridedMaxed = stridedMaxed[::poolX,::poolY,:,:] ## 3,3,3,10
-           strided = strided[::poolX,::poolY,:,:] ## 3,3,3,10,2,2
+           stridedMaxed = stridedMaxed[::poolX,::poolY] ## 3,3,3,10
+           strided = strided[::poolX,::poolY] ## 3,3,3,10,2,2
         
         self.delAdelA = (stridedMaxed[:,:,:,:, np.newaxis, np.newaxis] == strided ) * 1 
         
@@ -229,38 +220,34 @@ class ConvPoolLayer:
 
     def feedForward(self, inputActivation):
 
-        ## input Activation is guranteed to be 4D tensor; for eg (5,8,3,10)  where 10 is the m
+        ## input Activation is guranteed to be 4D tensor; for eg (28,28,3,10)  where 10 is the m
         kw = self.weights  ## the 4D Tensor, weights  (5,8,3,2)
         kw = kw[:, :, :, :, np.newaxis]  ##(5,8,3,2,1)
         kb = self.biases  ## the 2D vector, biases  (2,1)
         ks = self.kernelSize + (1,) ## the size of weights tuple 
         c = self.ConvolutionalLayerSize
 
-        # sizeOfPrev = inputActivation.shape[0:-1]
 
         doubleBroadcastArray = np.lib.stride_tricks.sliding_window_view( inputActivation[:,:,:,np.newaxis,:] , 
                                                          (ks[0], ks[1]) + (inputActivation.shape[2], 1, inputActivation.shape[-1]) ,
-                                                          )[ ::self.stride[0] , ::self.stride[1] ] * kw[np.newaxis, np.newaxis]
-                    #  (24,21,5,8,3,1,10) * (1,1,5,8,3,2,10)
+                                                          )[ ::self.stride[0] , ::self.stride[1] ] * kw
+                    #  (24,21,1,1,1,5,8,3,1,10) * (5,8,3,2,1)  =>  (24,21,1,1,1,5,8,3,2,10)
+                    #  (24,21,1,2,10,5,8,3,1,1) * (5,8,3,1,1)  ;; the more straight forward approach to take sliding windows of size 5,8,3,1,1 or creat sliding windows along three axis only
         for number in range(0, 6):
                 doubleBroadcastArray = np.sum ( 
-                    doubleBroadcastArray, axis=2
-                )
-
-        self.weightedInputs =  doubleBroadcastArray + kb[np.newaxis,np.newaxis,:]
-        listofActiv = []
+                    doubleBroadcastArray, axis=-3
+                )  # (24,21,2,10)
+        print(doubleBroadcastArray.shape)
+        self.weightedInputs =  doubleBroadcastArray + kb
+       
         
-        for index in range(self.weightedInputs.shape[-2]):
-            listofActiv.append( self.activationFuncs[index].func(
-                self.weightedInputs[:, :, index, np.newaxis, :]
-            ) )
-
-        self.activation = np.concatenate(listofActiv, axis=2)
-        
+        self.activation =  self.activationFuncs[0].func(
+                self.weightedInputs[:, :, :, :]
+            ) 
 
         if self.PoolingBool == 1:
-            k = self.poolingMap(self.activation)
-            self.activations = k
+            self.activations  = self.poolingMap(self.activation)
+            
         else:
             self.activations = self.activation
 
@@ -297,23 +284,10 @@ class ConvPoolLayer:
                 s = deltasTimesWeights.shape
                 deltasTimesWeightsAugmented = np.kron(
                     deltasTimesWeights,
-                    np.ones((self.PoolingSize[0], self.PoolingSize[1]) + (1, 1)),
+                    np.ones(self.PoolingSize + (1, 1)),
                 )
 
-                # self.errors = np.zeros((c[0], c[1]) + (c[2], batchSize))
 
-                # for index in range(c[2]):
-                #     self.errors[:, :, index, :] = (
-                #         self.delAdelA[:, :, index, :]
-                #         * 
-                #         self.activationFuncs[index].prime(
-                #             self.weightedInputs[:, :, index, :]
-                #         )
-                #         * deltasTimesWeightsAugmented[:, :, index, :]
-                #     )
-
-                
-                            
                 print(self.weightedInputs.shape)
                 print(deltasTimesWeightsAugmented.shape)
                 
@@ -328,14 +302,16 @@ class ConvPoolLayer:
             
             
             else :
-                q = np.zeros( deeperDeltas.shape[0:-2] + self.PoolingLayerSize  + deeperDeltas.shape[-2:-1], dtype=float )
-                emplaceShape = deeperDeltas.shape[0:-2] + deeperWeights.shape  + deeperDeltas.shape[-2:-1]
-                emplaceStride = ( *np.add(q.strides[0:2] , q.strides[2:4] ) ,  *q.strides[2:] )
+               
+                q = np.zeros( deeperDeltas.shape[0:3] + self.PoolingLayerSize  + deeperDeltas.shape[-1:], dtype=float ) ## 10,10,3,12,12,3,10
+                emplaceShape =  deeperDeltas.shape[0:3] + deeperWeights.shape  + deeperDeltas.shape[-1:]  ## 10,10,3,3,3,3,10
+                emplaceStride =   ( *np.add(q.strides[0:2] , q.strides[3:5  ] ) ,  *q.strides[2:] )  ## 
                 
-                np.lib.stride_tricks.as_strided( q, shape=emplaceShape , strides=    )[:] = deeperWeights
-                epislons = np.expand(q, axis=-1) * deeperDeltas[:,:,np.newaxis, np.newaxis, np.newaxis]  
-                bigEpislons = np.sum(epislons, axis=(0,1,-2))  ##7,7,2,10
-                self.errors = self.activationFuncs[0].prime( self.weightedInputs) * bigEpislons * self.delAdelA
+                np.lib.stride_tricks.as_strided( q, shape=emplaceShape , strides=emplaceStride )[:] = np.expand_dims(deeperWeights , axis=-1)
+                q = q * deeperDeltas[:,:,:,np.newaxis, np.newaxis, np.newaxis]  
+                q = np.sum(q, axis=(2,1,0))  ##24,24,3,10
+                q = self.activationFuncs[0].prime( self.weightedInputs) * q  ## 12 , 12 ,3, 10
+                self.errors = np.kron(q, np.ones(self.PoolingSize + (1, 1)) ) * self.delAdelA  
                 
             
         else:
@@ -373,16 +349,18 @@ class ConvPoolLayer:
 
             ## The deeper layer is Convolutional Layer
             else:
-                q = np.zeros( deeperDeltas.shape[0:-2] + c  + deeperDeltas.shape[-2:-1], dtype=float )
-                emplaceShape = deeperDeltas.shape[0:-2] + deeperWeights.shape  + deeperDeltas.shape[-2:-1]
-                emplaceStride = ( *np.add(q.strides[0:2] , q.strides[2:4] ) ,  *q.strides[2:] )
+ 
+                q = np.zeros( deeperDeltas.shape[0:3] + c  + deeperDeltas.shape[-1:], dtype=float ) ## 22,22,3,24,24,3,10
+                emplaceShape =  deeperDeltas.shape[0:3] + deeperWeights.shape  + deeperDeltas.shape[-1:]  ## 22,22,3,3,3,3,10
+                emplaceStride =   ( *np.add(q.strides[0:2] , q.strides[3:5  ] ) ,  *q.strides[2:] )  ## 
                 
-                np.lib.stride_tricks.as_strided( q, shape=emplaceShape , strides=emplaceStride )[:] = deeperWeights
-                epislons = np.expand(q, axis=-1) * deeperDeltas[:,:,np.newaxis, np.newaxis, np.newaxis]  
-                bigEpislons = np.sum(epislons, axis=(0,1,-2))  ##7,7,2,10
-                self.errors = self.activationFuncs[0].prime( self.weightedInputs) * bigEpislons
+                np.lib.stride_tricks.as_strided( q, shape=emplaceShape , strides=emplaceStride )[:] = np.expand_dims(deeperWeights , axis=-1)
+                q = q * deeperDeltas[:,:,:,np.newaxis, np.newaxis, np.newaxis]  
+                q = np.sum(q, axis=(2,1,0))  ##24,24,3,10
+                self.errors = self.activationFuncs[0].prime( self.weightedInputs) * q
                 
-
+                
+                
 
         ## BP3 ; updating the Biases
         self.biases = self.biases - ((eta) / batchSize) * np.sum(
@@ -391,7 +369,7 @@ class ConvPoolLayer:
 
         iaR = inputActivation[:, :, :, np.newaxis, :]
         # iaRslide = np.lib.stride_tricks.as_strided(
-        #     iaR, shape=(self.kernelsize[0] , self.kernelsize[1]) + (c[0], c[1]) + iaR.shape[2:]  ### ofc the shape of c is less than that of input activation
+        #     iaR, shape=(self.kernelsize [0] , self.kernelsize[1]) + (c[0], c[1]) + iaR.shape[2:]  ### ofc the shape of c is less than that of input activation
         # , stride=self.stride)
         iaRslide = np.lib.stride_tricks.sliding_window_view(
             iaR, (c[0], c[1]) + iaR.shape[2:]  ### ofc the shape of c is less than that of input activation
